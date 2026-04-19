@@ -1,0 +1,1095 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>the balmy app</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,800;1,400&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div class="header-top">
+                <div class="brand">
+                    <h1><i class="fas fa-cloud-sun"></i> the balmy app</h1>
+                    <span class="tagline">may this be a pleasant day</span>
+                </div>
+                <div class="header-actions">
+                    <button class="accent-toggle" id="accentToggle" type="button" aria-label="Switch accent style">
+                        <i class="fas fa-gem"></i>
+                        <span class="accent-label">sienna</span>
+                    </button>
+                    <button class="theme-toggle" id="themeToggle" type="button" aria-label="Toggle light and dark theme">
+                        <i class="fas fa-moon"></i>
+                    </button>
+                </div>
+            </div>
+            <p class="subtitle">Feel good, look good</p>
+        </header>
+
+        <div class="search-section" id="plannerSourceSection">
+            <form method="post" class="planner-form" id="plannerForm">
+                <input type="hidden" name="plan_mode" id="planModeInput" value="single">
+                <input type="hidden" name="city" id="cityInput" value="{{ city if city else '' }}">
+                <input type="hidden" name="work_city" id="workCityInput" value="{{ work_city if work_city else '' }}">
+                <input type="hidden" name="leave_home" id="leaveHomeInput" value="{{ leave_home if leave_home else '08:00' }}">
+                <input type="hidden" name="leave_work" id="leaveWorkInput" value="{{ leave_work if leave_work else '17:00' }}">
+
+                <section class="mode-scheduler" aria-label="Mode schedule">
+                    <div class="mode-scheduler-topline">
+                        <p class="mode-scheduler-title">weekly mode + locations</p>
+                        <p class="mode-scheduler-summary" id="scheduleSummary">Set each day, then build today's plan.</p>
+                    </div>
+
+                    <div id="weeklyScheduleGrid" class="weekly-schedule-grid"></div>
+                </section>
+
+                <section class="today-location-editor" aria-label="Today's location">
+                    <div class="today-location-topline">
+                        <p class="today-location-title">today's location</p>
+                        <p class="today-location-mode" id="todayLocationModeLabel">mode: single</p>
+                    </div>
+                    <div id="todayLocationFields" class="today-location-fields"></div>
+                </section>
+
+                <div class="planner-action-row">
+                    <button type="button" class="planner-secondary-btn" id="applyTodayLocationBtn">set today's location</button>
+                    <button type="button" class="planner-secondary-btn" id="saveWeeklyPlanBtn">save weekly settings</button>
+                    <span class="planner-action-note" id="plannerActionNote"></span>
+                </div>
+
+                <button type="submit" class="build-plan-btn"><i class="fas fa-calendar-check"></i> build today's plan</button>
+            </form>
+        </div>
+
+        {% if error %}
+            <div class="error-card">
+                <i class="fas fa-exclamation-circle"></i>
+                <p>{{ error }}</p>
+            </div>
+        {% endif %}
+
+        {% if weather %}
+            <div class="weather-card">
+                <div class="planner-inline-shell">
+                    <button type="button" class="planner-reveal-btn" id="plannerRevealBtn">
+                        <i class="fas fa-sliders-h"></i> show weekly mode + locations
+                    </button>
+                    <div class="planner-inline-mount" id="plannerInlineMount" style="display:none;"></div>
+                </div>
+
+                <div class="city-header">
+                    <h2 id="cityHeading"
+                        class="{% if commute_mode and commute_brief %}commute-route-title{% endif %}"
+                        data-single-city="{{ city if city else '' }}"
+                        data-commute-route="{% if commute_brief %}{{ commute_brief.home_city }} → {{ commute_brief.work_city }}{% endif %}">
+                        {% if commute_mode and commute_brief %}{{ commute_brief.home_city }} <span class="route-arrow">→</span> {{ commute_brief.work_city }}{% else %}{{ city }}{% endif %}
+                    </h2>
+                    {% if today_vibe %}<p class="city-vibe">{{ today_vibe }}</p>{% endif %}
+                </div>
+
+                <!-- View toggle tabs -->
+                <div class="view-toggle">
+                    {% if commute_mode and commute_brief %}
+                    <button class="view-btn" data-view="commute">commute day</button>
+                    {% endif %}
+                    <button class="view-btn" data-view="briefing">daily briefing</button>
+                    <button class="view-btn active" data-view="today">today</button>
+                    <button class="view-btn" data-view="tomorrow">tomorrow</button>
+                    <button class="view-btn" data-view="weekend">this weekend</button>
+                    <button class="view-btn" data-view="week">this week</button>
+                </div>
+
+                {% if commute_mode and commute_brief %}
+                <!-- COMMUTE DAY panel -->
+                <div class="view-panel" data-panel="commute" style="display:none">
+                    <div class="morning-briefing-card">
+                        <p class="plan-day-stamp"><i class="fas fa-calendar-day"></i> {{ plan_weekday if plan_weekday else 'Today' }} · {{ plan_date if plan_date else '' }}</p>
+                        <p class="morning-briefing-headline">{{ commute_brief.headline }}</p>
+
+                        <!-- Location summary chips -->
+                        <div class="commute-location-chips">
+                            <div class="commute-chip commute-chip-home">
+                                <img src="http://openweathermap.org/img/wn/{{ commute_brief.home.icon }}.png" alt="" class="commute-chip-icon">
+                                <span class="commute-chip-label">{{ commute_brief.home.label }}</span>
+                                <span class="commute-chip-temp">{{ commute_brief.home.temp }}°C</span>
+                                <span class="commute-chip-desc">{{ commute_brief.home.description }}</span>
+                            </div>
+                            <div class="commute-chip commute-chip-work">
+                                <img src="http://openweathermap.org/img/wn/{{ commute_brief.work.icon }}.png" alt="" class="commute-chip-icon">
+                                <span class="commute-chip-label">{{ commute_brief.work.label }}</span>
+                                <span class="commute-chip-temp">{{ commute_brief.work.temp }}°C</span>
+                                <span class="commute-chip-desc">{{ commute_brief.work.description }}</span>
+                            </div>
+                        </div>
+
+                        <!-- Merged wear + carry grid -->
+                        <div class="morning-briefing-grid">
+                            <div class="morning-briefing-item commute-wear-item">
+                                <p class="morning-briefing-label">wear</p>
+                                <p class="morning-briefing-text">{{ commute_brief.wear }}</p>
+                            </div>
+                            <div class="morning-briefing-item">
+                                <p class="morning-briefing-label">carry</p>
+                                <p class="morning-briefing-text">{{ commute_brief.carry }}</p>
+                            </div>
+                        </div>
+
+                        <!-- Commute watch -->
+                        <div class="commute-watch">
+                            <p class="commute-watch-label"><i class="fas fa-route"></i> commute watch</p>
+                            <ul class="commute-flag-list">
+                                {% for flag in commute_brief.commute_flags %}
+                                <li class="commute-flag-item">{{ flag }}</li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+
+                        <!-- Commute times note -->
+                        <p class="commute-times-note">
+                            <i class="fas fa-clock"></i>
+                            Leaving home at <strong>{{ commute_brief.leave_home }}</strong> ·
+                            Leaving work at <strong>{{ commute_brief.leave_work }}</strong>
+                        </p>
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- DAILY BRIEFING panel -->
+                <div class="view-panel" data-panel="briefing" style="display:none">
+                    <div class="morning-briefing-card">
+                        <p class="plan-day-stamp"><i class="fas fa-calendar-day"></i> {{ plan_weekday if plan_weekday else 'Today' }} · {{ plan_date if plan_date else '' }}</p>
+                        <p class="morning-briefing-headline">{{ daily_brief.headline if daily_brief else 'Here is your low-decision plan.' }}</p>
+
+                        <div class="morning-briefing-meta">
+                            <span><i class="fas fa-temperature-half"></i> {{ weather.temp }}°C</span>
+                            <span><i class="fas fa-cloud"></i> {{ weather.description }}</span>
+                            <span><i class="fas fa-clock"></i> Sunrise {{ weather.sunrise }}</span>
+                        </div>
+
+                        <div class="morning-briefing-grid">
+                            <div class="morning-briefing-item">
+                                <p class="morning-briefing-label">wear</p>
+                                <p class="morning-briefing-text" id="briefWear">{{ daily_brief.wear_now if daily_brief else 'Comfortable layered outfit' }}</p>
+                            </div>
+                            <div class="morning-briefing-item">
+                                <p class="morning-briefing-label">carry</p>
+                                <p class="morning-briefing-text" id="briefCarry">{{ daily_brief.carry_item if daily_brief else 'Water bottle' }}</p>
+                            </div>
+                            <div class="morning-briefing-item">
+                                <p class="morning-briefing-label">activity</p>
+                                <p class="morning-briefing-text" id="briefActivity">{{ daily_brief.activity if daily_brief else today_activity }}</p>
+                            </div>
+                            <div class="morning-briefing-item">
+                                <p class="morning-briefing-label">meal or drink</p>
+                                <p class="morning-briefing-text" id="briefMeal">{{ daily_brief.meal if daily_brief else today_meal_nudge }}</p>
+                            </div>
+                        </div>
+
+                        <button type="button" class="start-day-btn" id="startMyDayBtn">
+                            <i class="fas fa-play"></i> start my day
+                        </button>
+
+                        <div class="day-checklist" id="dayChecklist" style="display:none;">
+                            <label class="day-check-item">
+                                <input type="checkbox" data-task="wear">
+                                <span class="day-check-text">Wear: <span id="checkWear"></span></span>
+                            </label>
+                            <label class="day-check-item">
+                                <input type="checkbox" data-task="carry">
+                                <span class="day-check-text">Carry: <span id="checkCarry"></span></span>
+                            </label>
+                            <label class="day-check-item">
+                                <input type="checkbox" data-task="activity">
+                                <span class="day-check-text">Activity: <span id="checkActivity"></span></span>
+                            </label>
+                            <label class="day-check-item">
+                                <input type="checkbox" data-task="meal">
+                                <span class="day-check-text">Meal/Drink: <span id="checkMeal"></span></span>
+                            </label>
+                        </div>
+
+                        <div class="wind-down-briefing" id="windDownBriefing"
+                             data-target-date="{{ forecast.tomorrow.date if forecast and forecast.tomorrow else '' }}"
+                             data-tomorrow-weekday="{{ wind_down_plan.tomorrow_weekday if wind_down_plan else 'tomorrow' }}">
+                            <div class="wind-down-topline">
+                                <p class="wind-down-heading" id="windDownHeading">End-of-day prep for tomorrow.</p>
+                                <div class="wind-down-mode-toggle" role="group" aria-label="Wind-down wording preference">
+                                    <button type="button" class="wind-mode-btn active" data-mode="tomorrow">tomorrow</button>
+                                    <button type="button" class="wind-mode-btn" data-mode="shift">next shift</button>
+                                </div>
+                            </div>
+                            <p class="wind-down-subcopy" id="windDownSubcopy">Do this before you end your day so tomorrow-you has a lighter start.</p>
+                            <button type="button" class="start-day-btn wind-down-btn" id="startWindDownBtn">
+                                <i class="fas fa-briefcase"></i> pack your bag for tomorrow
+                            </button>
+                            <div class="day-checklist" id="windDownChecklist" style="display:none;">
+                                <label class="day-check-item">
+                                    <input type="checkbox" data-task="wear">
+                                    <span class="day-check-text"><span id="windDownItem1">{{ wind_down_plan['items'][0] if wind_down_plan and wind_down_plan['items'] else 'Set out one ready-to-wear outfit.' }}</span></span>
+                                </label>
+                                <label class="day-check-item">
+                                    <input type="checkbox" data-task="carry">
+                                    <span class="day-check-text"><span id="windDownItem2">{{ wind_down_plan['items'][1] if wind_down_plan and wind_down_plan['items'] else 'Pack your everyday essentials (keys, wallet, ID).' }}</span></span>
+                                </label>
+                                <label class="day-check-item">
+                                    <input type="checkbox" data-task="essentials">
+                                    <span class="day-check-text"><span id="windDownItem3">{{ wind_down_plan['items'][2] if wind_down_plan and wind_down_plan['items'] else 'Add a reusable water bottle.' }}</span></span>
+                                </label>
+                                <label class="day-check-item">
+                                    <input type="checkbox" data-task="fuel">
+                                    <span class="day-check-text"><span id="windDownItem4">{{ wind_down_plan['items'][3] if wind_down_plan and wind_down_plan['items'] else 'Pack one snack so you are not running on empty.' }}</span></span>
+                                </label>
+                            </div>
+                        </div>
+
+                        {% if forecast and forecast.tomorrow and forecast.tomorrow.batch_note %}
+                        <p class="morning-briefing-batch">{{ forecast.tomorrow.batch_note }}</p>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <!-- TODAY panel -->
+                <div class="view-panel" data-panel="today">
+                    <div class="weather-content">
+                        <div class="weather-icon-section">
+                            <img src="http://openweathermap.org/img/wn/{{ weather.icon }}@4x.png" alt="Weather icon" class="weather-icon">
+                        </div>
+                        <div class="weather-info">
+                            <p class="temp">{{ weather.temp }}<span class="unit">°C</span></p>
+                            <p class="description">{{ weather.description }}</p>
+                            <p class="feels-like">Feels like {{ weather.feels_like }}°C</p>
+                        </div>
+                    </div>
+                    <div class="weather-details">
+                        <div class="detail-item">
+                            <i class="fas fa-sunrise"></i>
+                            <div>
+                                <p class="detail-label">Sunrise</p>
+                                <p class="detail-value">{{ weather.sunrise }}</p>
+                            </div>
+                        </div>
+                        <div class="detail-item">
+                            <i class="fas fa-sunset"></i>
+                            <div>
+                                <p class="detail-label">Sunset</p>
+                                <p class="detail-value">{{ weather.sunset }}</p>
+                            </div>
+                        </div>
+                        <div class="detail-item">
+                            <i class="fas fa-tint"></i>
+                            <div>
+                                <p class="detail-label">Humidity</p>
+                                <p class="detail-value">{{ weather.humidity }}%</p>
+                            </div>
+                        </div>
+                        <div class="detail-item">
+                            <i class="fas fa-wind"></i>
+                            <div>
+                                <p class="detail-label">Wind Speed</p>
+                                <p class="detail-value">{{ weather.wind_speed }} m/s</p>
+                            </div>
+                        </div>
+                    </div>
+                    {% if clothing_suggestions %}
+                    <div class="clothing-section">
+                        <h3><i class="fas fa-tshirt"></i> Clothing Suggestions</h3>
+                        <div class="clothing-grid">
+                            {% for item in clothing_suggestions %}
+                            <div class="clothing-item">
+                                <span class="clothing-text">{{ item }}</span>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
+                    {% if today_activity %}
+                    <div class="activity-section">
+                        <p class="activity-label"><i class="fas fa-leaf"></i> try this today</p>
+                        <p class="activity-text">{{ today_activity }}</p>
+                    </div>
+                    {% endif %}
+                </div>
+
+                <!-- TOMORROW panel -->
+                <div class="view-panel" data-panel="tomorrow" style="display:none">
+                    {% if forecast and forecast.tomorrow %}
+                    {% set day = forecast.tomorrow %}
+                    <div class="forecast-day-detail">
+                        <p class="tomorrow-location-heading" id="tomorrowLocationHeading">Tomorrow location not set.</p>
+                        <div class="forecast-day-header">
+                            <span class="forecast-weekday">{{ day.weekday }}</span>
+                            <span class="forecast-date">{{ day.date_display }}</span>
+                        </div>
+                        <div class="weather-content">
+                            <div class="weather-icon-section">
+                                <img src="http://openweathermap.org/img/wn/{{ day.icon }}@4x.png" alt="Weather icon" class="weather-icon">
+                            </div>
+                            <div class="weather-info">
+                                <p class="temp">{{ day.temp_max }}<span class="unit">°C</span></p>
+                                <p class="temp-range">{{ day.temp_min }}° — {{ day.temp_max }}°</p>
+                                <p class="description">{{ day.description }}</p>
+                                <p class="feels-like">Feels like {{ day.feels_like }}°C</p>
+                                <p class="day-vibe">{{ day.vibe }}</p>
+                            </div>
+                        </div>
+                        <div class="weather-details">
+                            <div class="detail-item">
+                                <i class="fas fa-tint"></i>
+                                <div>
+                                    <p class="detail-label">Humidity</p>
+                                    <p class="detail-value">{{ day.humidity }}%</p>
+                                </div>
+                            </div>
+                            <div class="detail-item">
+                                <i class="fas fa-wind"></i>
+                                <div>
+                                    <p class="detail-label">Wind Speed</p>
+                                    <p class="detail-value">{{ day.wind_speed }} m/s</p>
+                                </div>
+                            </div>
+                        </div>
+                        {% if day.clothing %}
+                        <div class="clothing-section">
+                            <h3><i class="fas fa-tshirt"></i> Clothing Suggestions</h3>
+                            <div class="clothing-grid">
+                                {% for item in day.clothing %}
+                                <div class="clothing-item">
+                                    <span class="clothing-text">{{ item }}</span>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        {% endif %}
+                        {% if day.activity %}
+                        <div class="activity-section">
+                            <p class="activity-label"><i class="fas fa-leaf"></i> try this tomorrow</p>
+                            <p class="activity-text">{{ day.activity }}</p>
+                        </div>
+                        {% endif %}
+                    </div>
+                    {% else %}
+                    <div class="forecast-unavailable">
+                        <i class="fas fa-cloud"></i>
+                        <p>Tomorrow's forecast isn't available yet.</p>
+                    </div>
+                    {% endif %}
+                </div>
+
+                <!-- THIS WEEKEND panel -->
+                <div class="view-panel" data-panel="weekend" style="display:none">
+                    {% if forecast and forecast.weekend %}
+                    {% for day in forecast.weekend %}
+                    <div class="forecast-day-detail {% if not loop.first %}forecast-day-divider{% endif %}">
+                        <div class="forecast-day-header">
+                            <span class="forecast-weekday">{{ day.weekday }}</span>
+                            <span class="forecast-date">{{ day.date_display }}</span>
+                        </div>
+                        <div class="weather-content">
+                            <div class="weather-icon-section">
+                                <img src="http://openweathermap.org/img/wn/{{ day.icon }}@2x.png" alt="Weather icon" class="weather-icon forecast-icon-sm">
+                            </div>
+                            <div class="weather-info">
+                                <p class="temp">{{ day.temp_max }}<span class="unit">°C</span></p>
+                                <p class="temp-range">{{ day.temp_min }}° — {{ day.temp_max }}°</p>
+                                <p class="description">{{ day.description }}</p>
+                                <p class="day-vibe">{{ day.vibe }}</p>
+                            </div>
+                        </div>
+                        {% if day.clothing %}
+                        <div class="clothing-section">
+                            <h3><i class="fas fa-tshirt"></i> Clothing Suggestions</h3>
+                            <div class="clothing-grid">
+                                {% for item in day.clothing[:4] %}
+                                <div class="clothing-item">
+                                    <span class="clothing-text">{{ item }}</span>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                        {% endif %}
+                        {% if day.activity %}
+                        <div class="activity-section">
+                            <p class="activity-label"><i class="fas fa-leaf"></i> try this {{ day.weekday | lower }}</p>
+                            <p class="activity-text">{{ day.activity }}</p>
+                        </div>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                    {% else %}
+                    <div class="forecast-unavailable">
+                        <i class="fas fa-umbrella-beach"></i>
+                        <p>Weekend days aren't in the 5-day forecast window right now.</p>
+                    </div>
+                    {% endif %}
+                </div>
+
+                <!-- THIS WEEK panel -->
+                <div class="view-panel" data-panel="week" style="display:none">
+                    {% if forecast and forecast.week %}
+                    <div class="week-strip">
+                        {% for day in forecast.week %}
+                        <div class="week-day-card">
+                            <p class="week-day-name">{{ day.weekday_short }}</p>
+                            <p class="week-date">{{ day.date_display }}</p>
+                            <img src="http://openweathermap.org/img/wn/{{ day.icon }}@2x.png" alt="{{ day.description }}" class="week-icon">
+                            <p class="week-temp-range">{{ day.temp_max }}° / {{ day.temp_min }}°</p>
+                            <p class="week-desc">{{ day.description }}</p>
+                            <p class="week-vibe">{{ day.vibe }}</p>
+                            {% if day.meal_nudge %}
+                            <p class="week-meal-nudge">{{ day.meal_nudge }}</p>
+                            {% endif %}
+                            {% if day.batch_note %}
+                            <p class="week-batch-note">{{ day.batch_note }}</p>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <div class="forecast-unavailable">
+                        <i class="fas fa-calendar-times"></i>
+                        <p>Weekly forecast isn't available right now.</p>
+                    </div>
+                    {% endif %}
+                </div>
+
+            </div>
+        {% endif %}
+    </div>
+
+    <script>
+        // Weekly schedule with per-day mode + locations (single source of truth)
+        const plannerForm = document.getElementById('plannerForm');
+        const plannerSourceSection = document.getElementById('plannerSourceSection');
+        const plannerRevealBtn = document.getElementById('plannerRevealBtn');
+        const plannerInlineMount = document.getElementById('plannerInlineMount');
+        const scheduleSummary = document.getElementById('scheduleSummary');
+        const weeklyScheduleGrid = document.getElementById('weeklyScheduleGrid');
+        const tomorrowLocationHeading = document.getElementById('tomorrowLocationHeading');
+        const todayLocationFields = document.getElementById('todayLocationFields');
+        const todayLocationModeLabel = document.getElementById('todayLocationModeLabel');
+        const applyTodayLocationBtn = document.getElementById('applyTodayLocationBtn');
+        const saveWeeklyPlanBtn = document.getElementById('saveWeeklyPlanBtn');
+        const plannerActionNote = document.getElementById('plannerActionNote');
+
+        const planModeInput = document.getElementById('planModeInput');
+        const cityInput = document.getElementById('cityInput');
+        const workCityInput = document.getElementById('workCityInput');
+        const leaveHomeInput = document.getElementById('leaveHomeInput');
+        const leaveWorkInput = document.getElementById('leaveWorkInput');
+
+        const weekPlanStorageKey = 'weeklyModeLocationPlanV1';
+        const dayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+        function weekdayMondayFirst(dateObj) {
+            return (dateObj.getDay() + 6) % 7;
+        }
+
+        function defaultDayConfig() {
+            return {
+                mode: 'single',
+                singleCity: '',
+                homeCity: '',
+                workCity: '',
+                leaveHome: '08:00',
+                leaveWork: '17:00',
+            };
+        }
+
+        function readWeekPlan() {
+            const fallback = { days: {} };
+            dayLabels.forEach((_, index) => {
+                fallback.days[String(index)] = defaultDayConfig();
+            });
+
+            try {
+                const raw = localStorage.getItem(weekPlanStorageKey);
+                if (!raw) return fallback;
+                const parsed = JSON.parse(raw);
+                const merged = { days: { ...fallback.days } };
+                Object.keys(parsed.days || {}).forEach((key) => {
+                    merged.days[key] = {
+                        ...defaultDayConfig(),
+                        ...(parsed.days[key] || {}),
+                        mode: parsed.days[key]?.mode === 'commute' ? 'commute' : 'single',
+                    };
+                });
+                return merged;
+            } catch {
+                return fallback;
+            }
+        }
+
+        function writeWeekPlan(plan) {
+            localStorage.setItem(weekPlanStorageKey, JSON.stringify(plan));
+        }
+
+        let weekPlanState = readWeekPlan();
+
+        function getTodayIndex() {
+            return String(weekdayMondayFirst(new Date()));
+        }
+
+        function renderScheduleGrid() {
+            if (!weeklyScheduleGrid) return;
+            weeklyScheduleGrid.innerHTML = dayLabels.map((label, dayIndex) => {
+                const dayKey = String(dayIndex);
+                const config = weekPlanState.days[dayKey] || defaultDayConfig();
+                const isCommute = config.mode === 'commute';
+
+                return `
+                    <article class="day-plan-row ${isCommute ? 'is-commute' : 'is-single'}" data-day="${dayKey}">
+                        <div class="day-plan-topline">
+                            <p class="day-plan-name">${label}</p>
+                            <div class="day-plan-mode" role="group" aria-label="${label} mode">
+                                <button type="button" class="day-mode-btn ${!isCommute ? 'active' : ''}" data-day="${dayKey}" data-mode="single">single</button>
+                                <button type="button" class="day-mode-btn ${isCommute ? 'active' : ''}" data-day="${dayKey}" data-mode="commute">commute</button>
+                            </div>
+                        </div>
+
+                        <div class="day-plan-fields single-fields" style="display:${isCommute ? 'none' : 'grid'};">
+                            <input type="text" class="day-field-input" data-day="${dayKey}" data-field="singleCity" placeholder="City for this day" value="${config.singleCity || ''}">
+                        </div>
+
+                        <div class="day-plan-fields commute-fields" style="display:${isCommute ? 'grid' : 'none'};">
+                            <input type="text" class="day-field-input" data-day="${dayKey}" data-field="homeCity" placeholder="Home city" value="${config.homeCity || ''}">
+                            <input type="text" class="day-field-input" data-day="${dayKey}" data-field="workCity" placeholder="Work city" value="${config.workCity || ''}">
+                            <input type="time" class="day-field-input" data-day="${dayKey}" data-field="leaveHome" value="${config.leaveHome || '08:00'}">
+                            <input type="time" class="day-field-input" data-day="${dayKey}" data-field="leaveWork" value="${config.leaveWork || '17:00'}">
+                        </div>
+                    </article>
+                `;
+            }).join('');
+
+            renderScheduleSummary();
+        }
+
+        function renderScheduleSummary() {
+            if (!scheduleSummary) return;
+            const todayIdx = String(weekdayMondayFirst(new Date()));
+            const tomorrowDate = new Date();
+            tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+            const tomorrowIdx = String(weekdayMondayFirst(tomorrowDate));
+
+            const todayMode = weekPlanState.days[todayIdx]?.mode || 'single';
+            const tomorrowMode = weekPlanState.days[tomorrowIdx]?.mode || 'single';
+            scheduleSummary.textContent = `Today: ${todayMode} · Tomorrow: ${tomorrowMode}`;
+        }
+
+        function renderTomorrowLocationHeading() {
+            if (!tomorrowLocationHeading) return;
+            const tomorrowDate = new Date();
+            tomorrowDate.setDate(tomorrowDate.getDate() + 1);
+            const tomorrowIdx = String(weekdayMondayFirst(tomorrowDate));
+            const cfg = weekPlanState.days[tomorrowIdx] || defaultDayConfig();
+
+            if (cfg.mode === 'commute') {
+                const home = (cfg.homeCity || '').trim();
+                const work = (cfg.workCity || '').trim();
+                if (home && work) {
+                    tomorrowLocationHeading.textContent = `Tomorrow setup: ${home} -> ${work}`;
+                } else {
+                    tomorrowLocationHeading.textContent = 'Tomorrow setup: commute day (set home/work cities).';
+                }
+            } else {
+                const single = (cfg.singleCity || '').trim();
+                tomorrowLocationHeading.textContent = single
+                    ? `Tomorrow location: ${single}`
+                    : 'Tomorrow location not set.';
+            }
+        }
+
+        function renderTodayLocationEditor() {
+            if (!todayLocationFields) return;
+
+            const todayIdx = getTodayIndex();
+            const todayConfig = weekPlanState.days[todayIdx] || defaultDayConfig();
+            const isCommute = todayConfig.mode === 'commute';
+
+            if (todayLocationModeLabel) {
+                todayLocationModeLabel.textContent = `mode: ${isCommute ? 'commute' : 'single'}`;
+            }
+
+            if (isCommute) {
+                todayLocationFields.innerHTML = `
+                    <input type="text" class="today-location-input" id="todayHomeCityInput" placeholder="Home city" value="${todayConfig.homeCity || ''}">
+                    <input type="text" class="today-location-input" id="todayWorkCityInput" placeholder="Work city" value="${todayConfig.workCity || ''}">
+                    <input type="time" class="today-location-input" id="todayLeaveHomeInput" value="${todayConfig.leaveHome || '08:00'}">
+                    <input type="time" class="today-location-input" id="todayLeaveWorkInput" value="${todayConfig.leaveWork || '17:00'}">
+                `;
+            } else {
+                todayLocationFields.innerHTML = `
+                    <input type="text" class="today-location-input" id="todaySingleCityInput" placeholder="Today's city" value="${todayConfig.singleCity || ''}">
+                `;
+            }
+        }
+
+        function updateDayConfig(dayKey, field, value) {
+            if (!weekPlanState.days[dayKey]) {
+                weekPlanState.days[dayKey] = defaultDayConfig();
+            }
+            weekPlanState.days[dayKey][field] = value;
+            writeWeekPlan(weekPlanState);
+            renderScheduleSummary();
+            renderTomorrowLocationHeading();
+        }
+
+        function applyTodayToHiddenFormFields() {
+            const todayIdx = String(weekdayMondayFirst(new Date()));
+            const todayConfig = weekPlanState.days[todayIdx] || defaultDayConfig();
+
+            const isCommute = todayConfig.mode === 'commute';
+            planModeInput.value = isCommute ? 'commute' : 'single';
+
+            if (isCommute) {
+                cityInput.value = (todayConfig.homeCity || '').trim();
+                workCityInput.value = (todayConfig.workCity || '').trim();
+                leaveHomeInput.value = todayConfig.leaveHome || '08:00';
+                leaveWorkInput.value = todayConfig.leaveWork || '17:00';
+            } else {
+                cityInput.value = (todayConfig.singleCity || '').trim();
+                workCityInput.value = '';
+                leaveHomeInput.value = '08:00';
+                leaveWorkInput.value = '17:00';
+            }
+
+            return { isCommute, todayConfig };
+        }
+
+        weeklyScheduleGrid?.addEventListener('click', (event) => {
+            const btn = event.target.closest('.day-mode-btn');
+            if (!btn) return;
+
+            const dayKey = btn.dataset.day;
+            const nextMode = btn.dataset.mode === 'commute' ? 'commute' : 'single';
+            updateDayConfig(dayKey, 'mode', nextMode);
+            renderScheduleGrid();
+
+            if (dayKey === getTodayIndex()) {
+                renderTodayLocationEditor();
+            }
+        });
+
+        weeklyScheduleGrid?.addEventListener('input', (event) => {
+            const input = event.target.closest('.day-field-input');
+            if (!input) return;
+
+            const dayKey = input.dataset.day;
+            const field = input.dataset.field;
+            const value = input.value;
+            updateDayConfig(dayKey, field, value);
+
+            if (dayKey === getTodayIndex()) {
+                renderTodayLocationEditor();
+            }
+        });
+
+        applyTodayLocationBtn?.addEventListener('click', () => {
+            const todayIdx = getTodayIndex();
+            const todayConfig = weekPlanState.days[todayIdx] || defaultDayConfig();
+            const isCommute = todayConfig.mode === 'commute';
+
+            if (isCommute) {
+                const home = document.getElementById('todayHomeCityInput')?.value?.trim() || '';
+                const work = document.getElementById('todayWorkCityInput')?.value?.trim() || '';
+                const leaveHome = document.getElementById('todayLeaveHomeInput')?.value || '08:00';
+                const leaveWork = document.getElementById('todayLeaveWorkInput')?.value || '17:00';
+                weekPlanState.days[todayIdx] = { ...todayConfig, homeCity: home, workCity: work, leaveHome, leaveWork };
+            } else {
+                const singleCity = document.getElementById('todaySingleCityInput')?.value?.trim() || '';
+                weekPlanState.days[todayIdx] = { ...todayConfig, singleCity };
+            }
+
+            writeWeekPlan(weekPlanState);
+            renderScheduleGrid();
+            renderTodayLocationEditor();
+            if (plannerActionNote) plannerActionNote.textContent = 'today location saved';
+        });
+
+        saveWeeklyPlanBtn?.addEventListener('click', () => {
+            writeWeekPlan(weekPlanState);
+            if (plannerActionNote) {
+                const now = new Date();
+                const stamp = now.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+                plannerActionNote.textContent = `weekly settings saved at ${stamp}`;
+            }
+        });
+
+        plannerForm?.addEventListener('submit', (event) => {
+            const { isCommute, todayConfig } = applyTodayToHiddenFormFields();
+
+            if (isCommute) {
+                if (!(todayConfig.homeCity || '').trim() || !(todayConfig.workCity || '').trim()) {
+                    event.preventDefault();
+                    alert('Today is a commute day. Please set both Home city and Work city for today.');
+                    return;
+                }
+            } else {
+                if (!(todayConfig.singleCity || '').trim()) {
+                    event.preventDefault();
+                    alert('Today is a single-location day. Please set today\'s city.');
+                }
+            }
+        });
+
+        renderScheduleGrid();
+        renderTodayLocationEditor();
+        renderTomorrowLocationHeading();
+
+        // When weather results are present, mount planner into the results card and reveal on demand.
+        if (plannerInlineMount && plannerForm && plannerSourceSection) {
+            plannerInlineMount.appendChild(plannerForm);
+            plannerSourceSection.style.display = 'none';
+
+            const currentPlannerOpen = localStorage.getItem('plannerPanelOpen') === 'true';
+            plannerInlineMount.style.display = currentPlannerOpen ? 'block' : 'none';
+            if (plannerRevealBtn) {
+                plannerRevealBtn.innerHTML = currentPlannerOpen
+                    ? '<i class="fas fa-sliders-h"></i> hide weekly mode + locations'
+                    : '<i class="fas fa-sliders-h"></i> show weekly mode + locations';
+                plannerRevealBtn.addEventListener('click', () => {
+                    const isOpen = plannerInlineMount.style.display !== 'none';
+                    plannerInlineMount.style.display = isOpen ? 'none' : 'block';
+                    plannerRevealBtn.innerHTML = isOpen
+                        ? '<i class="fas fa-sliders-h"></i> show weekly mode + locations'
+                        : '<i class="fas fa-sliders-h"></i> hide weekly mode + locations';
+                    localStorage.setItem('plannerPanelOpen', String(!isOpen));
+                });
+            }
+        }
+
+        // Dark mode toggle
+        const themeToggle = document.getElementById('themeToggle');
+        const accentToggle = document.getElementById('accentToggle');
+        const htmlElement = document.documentElement;
+
+        // Accent mode toggle (sienna default, emerald alternative)
+        const currentAccent = localStorage.getItem('accent') || 'sienna';
+        htmlElement.setAttribute('data-accent', currentAccent);
+        updateAccentToggleLabel(currentAccent);
+
+        accentToggle.addEventListener('click', () => {
+            const accent = htmlElement.getAttribute('data-accent') || 'sienna';
+            const newAccent = accent === 'sienna' ? 'emerald' : 'sienna';
+            htmlElement.setAttribute('data-accent', newAccent);
+            localStorage.setItem('accent', newAccent);
+            updateAccentToggleLabel(newAccent);
+        });
+        
+        // Check for saved theme or default to light
+        const currentTheme = localStorage.getItem('theme') || 'light';
+        htmlElement.setAttribute('data-theme', currentTheme);
+        updateToggleIcon(currentTheme);
+        
+        themeToggle.addEventListener('click', () => {
+            const theme = htmlElement.getAttribute('data-theme');
+            const newTheme = theme === 'light' ? 'dark' : 'light';
+            htmlElement.setAttribute('data-theme', newTheme);
+            localStorage.setItem('theme', newTheme);
+            updateToggleIcon(newTheme);
+        });
+        
+        function updateToggleIcon(theme) {
+            const icon = themeToggle.querySelector('i');
+            if (theme === 'light') {
+                icon.classList.remove('fa-sun');
+                icon.classList.add('fa-moon');
+            } else {
+                icon.classList.remove('fa-moon');
+                icon.classList.add('fa-sun');
+            }
+        }
+
+        function updateAccentToggleLabel(accent) {
+            const label = accentToggle.querySelector('.accent-label');
+            label.textContent = accent === 'emerald' ? 'emerald' : 'sienna';
+        }
+
+        // View toggle tabs
+        const viewBtns = document.querySelectorAll('.view-btn');
+        const viewPanels = document.querySelectorAll('.view-panel');
+
+        function activateView(target) {
+            const hasTarget = Array.from(viewPanels).some(panel => panel.dataset.panel === target);
+            const safeTarget = hasTarget ? target : 'today';
+            viewBtns.forEach(b => b.classList.toggle('active', b.dataset.view === safeTarget));
+            viewPanels.forEach(panel => {
+                panel.style.display = panel.dataset.panel === safeTarget ? 'block' : 'none';
+            });
+            localStorage.setItem('activeView', safeTarget);
+        }
+
+        viewBtns.forEach(btn => {
+            btn.addEventListener('click', () => activateView(btn.dataset.view));
+        });
+
+        const savedView = {% if commute_mode %}'commute'{% else %}localStorage.getItem('activeView') || 'today'{% endif %};
+        activateView(savedView);
+
+        // Time format toggle for sunrise/sunset
+        let timeFormat24 = localStorage.getItem('timeFormat24') === 'true';
+        
+        function convertTimeFormat(time12) {
+            const [time, period] = time12.split(' ');
+            const [hours, minutes] = time.split(':');
+            let hour24 = parseInt(hours);
+            
+            if (period === 'PM' && hour24 !== 12) {
+                hour24 += 12;
+            } else if (period === 'AM' && hour24 === 12) {
+                hour24 = 0;
+            }
+            
+            return `${hour24.toString().padStart(2, '0')}:${minutes}`;
+        }
+        
+        function convertTo12Hour(time24) {
+            const [hours, minutes] = time24.split(':');
+            const hour = parseInt(hours);
+            const period = hour >= 12 ? 'PM' : 'AM';
+            const hour12 = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
+            return `${hour12}:${minutes} ${period}`;
+        }
+        
+        // Add click handlers to time display items (Sunrise and Sunset)
+        function addTimeToggleHandlers() {
+            // Find all detail items and make sunrise/sunset times clickable
+            const detailItems = document.querySelectorAll('.detail-item');
+            detailItems.forEach(item => {
+                const label = item.querySelector('.detail-label');
+                const value = item.querySelector('.detail-value');
+                if (label && value && (label.textContent === 'Sunrise' || label.textContent === 'Sunset')) {
+                    value.style.cursor = 'pointer';
+                    value.title = 'Click to toggle time format (12h/24h)';
+                    value.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        toggleTimeFormat();
+                    });
+                }
+            });
+
+        }
+        
+        function initStartMyDay() {
+            const startBtn = document.getElementById('startMyDayBtn');
+            const checklist = document.getElementById('dayChecklist');
+            if (!startBtn || !checklist) {
+                return;
+            }
+
+            const city = document.querySelector('.city-header h2')?.textContent?.trim() || 'city';
+            const dateKey = new Date().toISOString().slice(0, 10);
+            const storageKey = `startMyDay:${city}:${dateKey}`;
+
+            const wearText = document.getElementById('briefWear')?.textContent?.trim() || '';
+            const carryText = document.getElementById('briefCarry')?.textContent?.trim() || '';
+            const activityText = document.getElementById('briefActivity')?.textContent?.trim() || '';
+            const mealText = document.getElementById('briefMeal')?.textContent?.trim() || '';
+
+            const checkWear = document.getElementById('checkWear');
+            const checkCarry = document.getElementById('checkCarry');
+            const checkActivity = document.getElementById('checkActivity');
+            const checkMeal = document.getElementById('checkMeal');
+
+            if (checkWear) checkWear.textContent = wearText;
+            if (checkCarry) checkCarry.textContent = carryText;
+            if (checkActivity) checkActivity.textContent = activityText;
+            if (checkMeal) checkMeal.textContent = mealText;
+
+            const defaultState = {
+                started: false,
+                tasks: { wear: false, carry: false, activity: false, meal: false }
+            };
+
+            let state;
+            try {
+                state = JSON.parse(localStorage.getItem(storageKey)) || defaultState;
+            } catch {
+                state = defaultState;
+            }
+
+            function renderChecklist() {
+                checklist.style.display = state.started ? 'block' : 'none';
+                startBtn.innerHTML = state.started
+                    ? '<i class="fas fa-rotate-left"></i> reset day plan'
+                    : '<i class="fas fa-play"></i> start my day';
+
+                checklist.querySelectorAll('input[type="checkbox"]').forEach(input => {
+                    const task = input.dataset.task;
+                    input.checked = Boolean(state.tasks[task]);
+                    const label = input.closest('.day-check-item');
+                    if (label) label.classList.toggle('done', input.checked);
+                });
+            }
+
+            function saveState() {
+                localStorage.setItem(storageKey, JSON.stringify(state));
+            }
+
+            startBtn.addEventListener('click', () => {
+                if (!state.started) {
+                    state.started = true;
+                } else {
+                    state = {
+                        started: false,
+                        tasks: { wear: false, carry: false, activity: false, meal: false }
+                    };
+                }
+                saveState();
+                renderChecklist();
+            });
+
+            checklist.querySelectorAll('input[type="checkbox"]').forEach(input => {
+                input.addEventListener('change', () => {
+                    state.tasks[input.dataset.task] = input.checked;
+                    saveState();
+                    const label = input.closest('.day-check-item');
+                    if (label) label.classList.toggle('done', input.checked);
+                });
+            });
+
+            renderChecklist();
+        }
+
+        function initWindDownChecklist() {
+            const startBtn = document.getElementById('startWindDownBtn');
+            const checklist = document.getElementById('windDownChecklist');
+            const wrapper = document.getElementById('windDownBriefing');
+            const heading = document.getElementById('windDownHeading');
+            const subcopy = document.getElementById('windDownSubcopy');
+            const modeBtns = wrapper?.querySelectorAll('.wind-mode-btn') || [];
+            if (!startBtn || !checklist || !wrapper) {
+                return;
+            }
+
+            const city = document.querySelector('.city-header h2')?.textContent?.trim() || 'city';
+            const fallbackTomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+            const targetDate = wrapper.dataset.targetDate || fallbackTomorrow;
+            const storageKey = `windDownBag:${city}:${targetDate}`;
+            const modeKey = 'windDownPreferenceMode';
+            const tomorrowWeekday = wrapper.dataset.tomorrowWeekday || 'tomorrow';
+
+            const defaultState = {
+                started: false,
+                tasks: { wear: false, carry: false, essentials: false, fuel: false }
+            };
+
+            let mode = localStorage.getItem(modeKey) || 'tomorrow';
+
+            let state;
+            try {
+                state = JSON.parse(localStorage.getItem(storageKey)) || defaultState;
+            } catch {
+                state = defaultState;
+            }
+
+            function renderMode() {
+                modeBtns.forEach(btn => {
+                    btn.classList.toggle('active', btn.dataset.mode === mode);
+                });
+
+                if (heading) {
+                    heading.textContent = mode === 'shift'
+                        ? `End-of-day prep for your next shift.`
+                        : `End-of-day prep for ${tomorrowWeekday}.`;
+                }
+
+                if (subcopy) {
+                    subcopy.textContent = mode === 'shift'
+                        ? `Do this before you end your day so your future-shift self is already set (${tomorrowWeekday} weather).`
+                        : `Do this before you end your day so tomorrow-you has a lighter start (${tomorrowWeekday} weather).`;
+                }
+            }
+
+            function renderChecklist() {
+                checklist.style.display = state.started ? 'block' : 'none';
+                startBtn.innerHTML = state.started
+                    ? '<i class="fas fa-rotate-left"></i> reset bag plan'
+                    : `<i class="fas fa-briefcase"></i> ${mode === 'shift' ? 'prep your bag for next shift' : 'prep your bag for tomorrow'}`;
+
+                checklist.querySelectorAll('input[type="checkbox"]').forEach(input => {
+                    const task = input.dataset.task;
+                    input.checked = Boolean(state.tasks[task]);
+                    const label = input.closest('.day-check-item');
+                    if (label) label.classList.toggle('done', input.checked);
+                });
+            }
+
+            function saveState() {
+                localStorage.setItem(storageKey, JSON.stringify(state));
+            }
+
+            startBtn.addEventListener('click', () => {
+                if (!state.started) {
+                    state.started = true;
+                } else {
+                    state = {
+                        started: false,
+                        tasks: { wear: false, carry: false, essentials: false, fuel: false }
+                    };
+                }
+                saveState();
+                renderChecklist();
+            });
+
+            modeBtns.forEach(btn => {
+                btn.addEventListener('click', () => {
+                    mode = btn.dataset.mode === 'shift' ? 'shift' : 'tomorrow';
+                    localStorage.setItem(modeKey, mode);
+                    renderMode();
+                    renderChecklist();
+                });
+            });
+
+            checklist.querySelectorAll('input[type="checkbox"]').forEach(input => {
+                input.addEventListener('change', () => {
+                    state.tasks[input.dataset.task] = input.checked;
+                    saveState();
+                    const label = input.closest('.day-check-item');
+                    if (label) label.classList.toggle('done', input.checked);
+                });
+            });
+
+            renderMode();
+            renderChecklist();
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            addTimeToggleHandlers();
+            initStartMyDay();
+            initWindDownChecklist();
+            // Apply saved time format preference on page load
+            if (timeFormat24) {
+                applyTimeFormat();
+            }
+        });
+        
+        function toggleTimeFormat() {
+            timeFormat24 = !timeFormat24;
+            localStorage.setItem('timeFormat24', timeFormat24);
+            applyTimeFormat();
+        }
+        
+        function applyTimeFormat() {
+            // Update all time displays
+            const timeElements = document.querySelectorAll('.detail-value');
+            timeElements.forEach(element => {
+                const currentTime = element.textContent.trim();
+                if (currentTime.includes(':')) {
+                    if (timeFormat24 && currentTime.includes(' ')) {
+                        // Convert from 12-hour to 24-hour
+                        element.textContent = convertTimeFormat(currentTime);
+                    } else if (!timeFormat24 && !currentTime.includes(' ')) {
+                        // Convert from 24-hour to 12-hour
+                        element.textContent = convertTo12Hour(currentTime);
+                    }
+                }
+            });
+        }
+    </script>
+</body>
+</html>
