@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>the balmy app</title>
+  <style>
+    :root {
+      --bg: #f4f5f7;
+      --card: #ffffff;
+      --text: #13161a;
+      --muted: #5a6572;
+      --accent: #9c5f3c;
+      --border: rgba(19, 22, 26, 0.12);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      padding: 20px;
+    }
+    .card {
+      width: min(720px, 100%);
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 28px;
+      box-shadow: 0 18px 40px rgba(19, 22, 26, 0.08);
+    }
+    h1 {
+      margin: 0 0 8px;
+      font-size: 2rem;
+      letter-spacing: -0.02em;
+    }
+    p {
+      margin: 0 0 12px;
+      color: var(--muted);
+      line-height: 1.55;
+    }
+    .pill {
+      display: inline-block;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 6px 10px;
+      font-size: 0.76rem;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--text);
+      margin-bottom: 14px;
+      background: rgba(156, 95, 60, 0.1);
+    }
+    a {
+      color: var(--accent);
+      font-weight: 600;
+      text-decoration: none;
+    }
+    a:hover { text-decoration: underline; }
+    code {
+      background: rgba(19, 22, 26, 0.06);
+      padding: 2px 6px;
+      border-radius: 6px;
+    }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <span class="pill">the balmy app</span>
+    <h1>GitHub Pages is live</h1>
+    <p>This repository contains a Flask app. GitHub Pages serves static files only, so this page is a lightweight landing page for the project.</p>
+    <p>To run the full app (with weather API calls and scheduling features), clone the repo and run <code>python app.py</code> in a Python environment.</p>
+    <p>Repository: <a href="https://github.com/thebusisiwe/thebalmyapp">thebusisiwe/thebalmyapp</a></p>
+  </main>
+</body>
+</html>
